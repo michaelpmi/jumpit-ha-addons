@@ -1,11 +1,11 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
 # shellcheck shell=bash
 # JumpIT Connect – Home-Assistant-Add-on
 # Baut einen ausgehenden WireGuard-Tunnel zur JumpIT-Edge auf und
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.0"
+readonly VERSION="0.1.1"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
