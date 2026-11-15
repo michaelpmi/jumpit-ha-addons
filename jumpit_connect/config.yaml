@@ -1,5 +1,5 @@
 name: JumpIT Connect
-version: "0.1.1"
+version: "0.1.2"
 slug: jumpit_connect
 description: >-
   Sicherer Fernzugriff auf Home Assistant über JumpIT – Ende-zu-Ende
@@ -12,15 +12,23 @@ init: false
 startup: services
 boot: auto
 # Host-Netz: der WireGuard-Link entsteht im Host-Namespace, nginx erreicht
-# Home Assistant über 127.0.0.1:8123.
+# Home Assistant über 127.0.0.1 (Port wird automatisch erkannt).
 host_network: true
 privileged:
   - NET_ADMIN
+# Nötig, damit das Add-on den Proxy in Home Assistant selbst freigeben kann
+# (configuration.yaml ergänzen, prüfen, HA einmalig neu starten) – siehe DOCS.md.
+map:
+  - homeassistant_config:rw
+hassio_api: true
+hassio_role: manager
+homeassistant_api: true
 options:
   activation_code: ""
   api_url: "https://connect.jumpit.eu"
-  ha_upstream: "http://127.0.0.1:8123"
+  auto_configure_ha: true
 schema:
   activation_code: password
   api_url: url
-  ha_upstream: url
+  auto_configure_ha: bool
+  ha_upstream: url?

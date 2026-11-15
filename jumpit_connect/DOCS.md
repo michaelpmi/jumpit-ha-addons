@@ -10,19 +10,22 @@ leitet nur verschlüsselten Verkehr weiter und kann nicht mitlesen.
    **Aktivierungscode** eintragen und speichern.
 2. Add-on starten. Im Protokoll erscheint nach ca. einer Minute
    „Fernzugriff aktiv: https://….ha.jumpit.eu“.
-3. Falls das Protokoll darum bittet: in `configuration.yaml` ergänzen und
-   Home Assistant neu starten:
-
-   ```yaml
-   http:
-     use_x_forwarded_for: true
-     trusted_proxies:
-       - 127.0.0.1
-       - ::1
-   ```
-
+3. Home Assistant wird dabei automatisch für den Fernzugriff vorbereitet: Das
+   Add-on ergänzt die `configuration.yaml` um die Proxy-Freigabe, prüft die
+   Konfiguration und startet Home Assistant **einmalig** neu. Eine Sicherung
+   liegt als `configuration.yaml.jumpit-backup` daneben. Sie müssen nichts
+   bearbeiten. Lässt sich die Datei nicht automatisch ändern, erscheint eine
+   Benachrichtigung in Home Assistant, und der JumpIT-Support hilft.
 4. In der Home-Assistant-App unter **Einstellungen → Companion-App →
    Server** die angezeigte Adresse als externe URL eintragen.
+
+## Optionen
+
+- **auto_configure_ha** (Standard: an): Proxy-Freigabe in Home Assistant
+  automatisch einrichten. Ausschalten, wenn Sie die `configuration.yaml`
+  selbst verwalten.
+- **ha_upstream** (optional): Adresse von Home Assistant. Normalerweise nicht
+  nötig, Port und SSL werden automatisch erkannt.
 
 ## Neues Gerät / neu installiert
 

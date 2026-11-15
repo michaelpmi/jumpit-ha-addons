@@ -9,7 +9,8 @@ RUN apk add --no-cache \
         lego \
         curl \
         jq \
-        openssl
+        openssl \
+        python3
 
 COPY rootfs/ /
 RUN chmod a+x /run.sh
