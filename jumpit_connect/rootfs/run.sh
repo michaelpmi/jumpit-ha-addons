@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.2"
+readonly VERSION="0.1.3"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -19,7 +19,6 @@ readonly NGINX_PID=/tmp/jumpit-nginx.pid
 API_URL="$(bashio::config 'api_url')"
 API_URL="${API_URL%/}"
 PROXY_DONE="${DATA}/ha_proxy_attempted"
-HA_CONFIG=/homeassistant/configuration.yaml
 
 # Upstream: Standard ist die Adresse, die der Supervisor für Home Assistant meldet
 # (Port/SSL werden automatisch erkannt). Die Option ha_upstream überschreibt das.
@@ -31,7 +30,16 @@ detect_upstream() {
     fi
     if [[ "$(bashio::core.ssl 2>/dev/null || true)" == "true" ]]; then scheme=https; fi
     port="$(bashio::core.port 2>/dev/null || true)"
-    [[ "$port" =~ ^[0-9]+$ ]] || port=8123
+    if ! [[ "$port" =~ ^[0-9]+$ ]]; then
+        # Supervisor gibt den Port nicht her: den Port nehmen, auf dem HA antwortet
+        port=8123
+        for p in 8123 80; do
+            if [[ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "${scheme}://127.0.0.1:${p}/manifest.json" 2>/dev/null || true)" =~ ^[1-5][0-9][0-9]$ ]]; then
+                port="$p"
+                break
+            fi
+        done
+    fi
     echo "${scheme}://127.0.0.1:${port}"
 }
 UPSTREAM="$(detect_upstream)"
@@ -251,12 +259,8 @@ ha_notify() { # ha_notify <titel> <text>
 
 ha_manual_hint() {
     bashio::log.warning "Die Freigabe konnte nicht automatisch erfolgen: $1"
-    bashio::log.warning "Bitte in configuration.yaml ergänzen und Home Assistant neu starten:"
-    bashio::log.warning "http:"
-    bashio::log.warning "  use_x_forwarded_for: true"
-    bashio::log.warning "  trusted_proxies:"
-    local p
-    for p in "${PROXIES[@]}"; do bashio::log.warning "    - ${p}"; done
+    bashio::log.warning "Bitte in Home Assistant unter Einstellungen > System > Netzwerk > HTTP-Server"
+    bashio::log.warning "\"X-Forwarded-For vertrauen\" aktivieren und als vertrauenswürdige Proxys eintragen: ${PROXIES[*]}"
     ha_notify "JumpIT Connect: Einrichtung nicht abgeschlossen" \
         "Der Fernzugriff ist verbunden, Home Assistant braucht aber noch eine Freigabe. Bitte wenden Sie sich an den JumpIT-Support. Grund: $1"
 }
@@ -268,9 +272,13 @@ _host="${UPSTREAM#*://}"
 _host="${_host%%[:/]*}"
 if [[ "$_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$_host" != "127.0.0.1" ]]; then PROXIES+=("$_host"); fi
 
-# Rückgabe 0 = freigegeben, 1 = manuell nötig
+# Rückgabe 0 = freigegeben, 1 = manuell nötig.
+# Home Assistant >= 2026.8 verwaltet die HTTP-Einstellungen nicht mehr in der
+# configuration.yaml, sondern über seine WebSocket-API. Die Änderung gilt zuerst als
+# "pending" (Core startet neu) und wird nur bei bestandenem Test bestätigt – sonst
+# setzt Home Assistant sie nach ca. 5 Minuten selbst zurück.
 ha_proxy_setup() {
-    local res rc=0 result i code
+    local res rc=0 i code=""
     if [[ -f "$PROXY_DONE" ]]; then
         ha_manual_hint "automatische Freigabe wurde bereits einmal versucht"
         return 1
@@ -279,44 +287,37 @@ ha_proxy_setup() {
         ha_manual_hint "automatische Einrichtung ist in den Add-on-Optionen deaktiviert"
         return 1
     fi
-    if [[ ! -f "$HA_CONFIG" ]]; then
-        ha_manual_hint "configuration.yaml nicht gefunden"
-        return 1
-    fi
+
+    res="$(python3 /usr/local/bin/ha_http_config.py configure "${PROXIES[@]}")" || rc=$?
+    case "$rc:$res" in
+        0:restart) bashio::log.info "Proxy-Freigabe an Home Assistant übergeben – Home Assistant startet einmalig neu …" ;;
+        0:pending) bashio::log.info "Proxy-Freigabe wartet auf Bestätigung – prüfe …" ;;
+        4:*) ha_manual_hint "Home Assistant ist älter als 2026.8 (bitte aktualisieren)"; return 1 ;;
+        3:*) ha_manual_hint "die Freigabe steht schon in der Konfiguration, Home Assistant lehnt sie trotzdem ab"; return 1 ;;
+        *) ha_manual_hint "Home Assistant hat die Änderung nicht angenommen (${res:-keine Antwort})"; return 1 ;;
+    esac
     touch "$PROXY_DONE"
 
-    cp -p "$HA_CONFIG" "${HA_CONFIG}.jumpit-backup"
-    res="$(python3 /usr/local/bin/ha_proxy_patch.py "$HA_CONFIG" "${PROXIES[@]}")" || rc=$?
-    case "$rc" in
-        0) bashio::log.info "configuration.yaml ergänzt (Sicherung: configuration.yaml.jumpit-backup)." ;;
-        3) ha_manual_hint "die Freigabe steht schon in der Konfiguration, HA lehnt sie trotzdem ab"; return 1 ;;
-        4) ha_manual_hint "${res#manual:}"; return 1 ;;
-        *) ha_manual_hint "Patch fehlgeschlagen"; return 1 ;;
-    esac
-
-    result="$(sup POST /core/check | jq -r '.result // "error"' 2>/dev/null || echo error)"
-    if [[ "$result" != "ok" ]]; then
-        cp -p "${HA_CONFIG}.jumpit-backup" "$HA_CONFIG"
-        ha_manual_hint "Home Assistant hat die geänderte Konfiguration abgelehnt (Änderung zurückgenommen)"
-        return 1
-    fi
-
-    bashio::log.info "Konfiguration geprüft – starte Home Assistant einmalig neu …"
-    sup POST /core/restart -o /dev/null || true
     sleep 20
     for i in $(seq 1 60); do
         code="$(selftest_code)"
         [[ "$code" == "200" ]] && break
         sleep 5
     done
-    if [[ "$code" == "200" ]]; then
-        bashio::log.info "Home Assistant akzeptiert den Proxy."
-        ha_notify "JumpIT Connect eingerichtet" \
-            "Der Fernzugriff ist aktiv: https://$(st fqdn). Home Assistant wurde dafür einmalig neu gestartet."
-        return 0
+    if [[ "$code" != "200" ]]; then
+        ha_manual_hint "Home Assistant antwortet nach dem Neustart nicht wie erwartet (HTTP ${code:-keine}); die Änderung wird automatisch zurückgenommen"
+        return 1
     fi
-    ha_manual_hint "Home Assistant antwortet nach dem Neustart nicht wie erwartet (HTTP ${code:-keine})"
-    return 1
+
+    res="$(python3 /usr/local/bin/ha_http_config.py promote)" || rc=$?
+    if [[ "$res" != "promoted" ]]; then
+        ha_manual_hint "Bestätigung bei Home Assistant fehlgeschlagen (${res:-keine Antwort})"
+        return 1
+    fi
+    bashio::log.info "Home Assistant akzeptiert den Proxy – Einstellung bestätigt."
+    ha_notify "JumpIT Connect eingerichtet" \
+        "Der Fernzugriff ist aktiv: https://$(st fqdn). Home Assistant wurde dafür einmalig neu gestartet."
+    return 0
 }
 
 # ---------------------------------------------------------------- heartbeat

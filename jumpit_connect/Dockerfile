@@ -10,7 +10,8 @@ RUN apk add --no-cache \
         curl \
         jq \
         openssl \
-        python3
+        python3 \
+        py3-websockets
 
 COPY rootfs/ /
 RUN chmod a+x /run.sh
