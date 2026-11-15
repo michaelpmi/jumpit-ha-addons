@@ -1,0 +1,5 @@
+# Home-Assistant-Add-on-Repository von JumpIT
+# TODO(Michael): endgültige Repo-URL festlegen (GitHub/Gitea) — muss öffentlich lesbar sein.
+name: JumpIT Add-ons
+url: https://github.com/jumpit-eu/ha-addons
+maintainer: JumpIT – Michael Fleischmann <info@jumpit.eu>

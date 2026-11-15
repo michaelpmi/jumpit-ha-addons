@@ -1,0 +1,26 @@
+name: JumpIT Connect
+version: "0.1.0"
+slug: jumpit_connect
+description: >-
+  Sicherer Fernzugriff auf Home Assistant über JumpIT – Ende-zu-Ende
+  verschlüsselt, ohne Portfreigabe, funktioniert auch hinter Starlink/CGNAT.
+url: https://jumpit.eu
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+# Host-Netz: der WireGuard-Link entsteht im Host-Namespace, nginx erreicht
+# Home Assistant über 127.0.0.1:8123.
+host_network: true
+privileged:
+  - NET_ADMIN
+options:
+  activation_code: ""
+  api_url: "https://connect.jumpit.eu"
+  ha_upstream: "http://127.0.0.1:8123"
+schema:
+  activation_code: password
+  api_url: url
+  ha_upstream: url
