@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.8"
+readonly VERSION="0.1.9"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -360,7 +360,7 @@ notify_access_ended() {
     slug="${slug%%.*}"
     bashio::log.error "Der Zugang wurde beendet (Laufzeit abgelaufen, gekündigt oder durch einen neuen Code ersetzt). Fernzugriff gestoppt."
     ha_notify "JumpIT Connect: Zugang beendet" \
-        "Der Fernzugriff ist beendet. Ist die Laufzeit abgelaufen, bestellen Sie JumpIT Connect unter https://kis.jumpit.eu/store/home-assistant neu. Tragen Sie als Wunsch-Adresse ${slug} ein und verwenden Sie dieselbe E-Mail-Adresse, dann bekommen Sie Ihre Adresse zurück. Den neuen Aktivierungscode tragen Sie in der Konfiguration dieser App ein."
+        "Der Fernzugriff ist beendet. Ist die Laufzeit abgelaufen, bestellen Sie JumpIT Connect unter https://kis.jumpit.eu/store/home-assistant neu. Tragen Sie als Wunsch-Adresse ${slug} ein und verwenden Sie dieselbe E-Mail-Adresse, dann bekommen Sie Ihre Adresse zurück, wenn Sie das innerhalb von 7 Tagen nach dem Ende tun. Den neuen Aktivierungscode tragen Sie in der Konfiguration dieser App ein."
 }
 
 # Beim Start: ist der Zugang pausiert (Test abgelaufen/gesperrt), nicht mit einem Tunnelfehler scheitern,

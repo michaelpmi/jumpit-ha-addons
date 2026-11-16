@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.1.9
+
+- Die Meldung bei beendetem Zugang nennt jetzt die Frist: Die bisherige Adresse bekommen Sie zurück, wenn Sie
+  innerhalb von 7 Tagen nach dem Ende neu bestellen.
+
 ## 0.1.8
 
 - Ist Ihr Zugang beendet (Laufzeit abgelaufen, gekündigt oder durch einen neuen Code ersetzt), sagt die App
