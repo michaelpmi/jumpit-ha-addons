@@ -18,7 +18,13 @@ leitet nur verschlüsselten Verkehr weiter und kann nicht mitlesen.
    müssen nichts bearbeiten. Lässt sich die Freigabe nicht automatisch setzen,
    erscheint eine Benachrichtigung in Home Assistant, und der JumpIT-Support
    hilft.
-4. In der Home-Assistant-App unter **Einstellungen → Companion-App →
+4. Ihre Adresse sehen Sie in Home Assistant als Entität
+   **JumpIT Fernzugriff Adresse** (`sensor.jumpit_connect_adresse`) und den
+   Verbindungsstatus als **JumpIT Fernzugriff verbunden**
+   (`binary_sensor.jumpit_connect_verbunden`). Beide lassen sich in einer
+   Dashboard-Karte anzeigen (Entitäten-Karte). Nach einem Neustart von Home
+   Assistant erscheinen sie innerhalb einer Minute wieder.
+5. In der Home-Assistant-App unter **Einstellungen → Companion-App →
    Server** die angezeigte Adresse als externe URL eintragen.
 
 Voraussetzung: Home Assistant ab Version 2026.8.

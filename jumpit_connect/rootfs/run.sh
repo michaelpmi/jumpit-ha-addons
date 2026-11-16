@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.4"
+readonly VERSION="0.1.5"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -68,6 +68,7 @@ teardown() {
 
 on_exit() {
     bashio::log.info "Beende JumpIT Connect …"
+    remove_entities
     teardown
 }
 trap on_exit EXIT
@@ -331,6 +332,16 @@ ha_proxy_setup() {
     return 0
 }
 
+# ------------------------------------------------- Entitäten in Home Assistant
+publish_entities() {
+    python3 /usr/local/bin/ha_entities.py publish "https://$(st fqdn)" "$(handshake_age)" "$(cert_days_left)" "$VERSION" \
+        >/dev/null 2>&1 || true
+}
+
+remove_entities() {
+    python3 /usr/local/bin/ha_entities.py delete >/dev/null 2>&1 || true
+}
+
 # ---------------------------------------------------------------- heartbeat
 heartbeat() {
     local payload http
@@ -386,6 +397,7 @@ if [[ "$LAST_SELFTEST" == "400" ]]; then
     ((rc == 0)) && LAST_SELFTEST="200"
 fi
 
+publish_entities
 bashio::log.info "Fernzugriff aktiv: https://$(st fqdn)"
 
 tick=0
@@ -399,17 +411,21 @@ while true; do
         tunnel_up
     fi
 
+    publish_entities
+
     # Heartbeat alle 5 min
     if ((tick % 5 == 0)); then
         case "$(heartbeat)" in
             410)
                 bashio::log.error "Dienst wurde gekündigt – Fernzugriff beendet."
+                remove_entities
                 teardown
                 rm -f "$STATE" "$PSK"
                 bashio::exit.nok "Gekündigt."
                 ;;
             403)
                 bashio::log.warning "Dienst gesperrt – Fernzugriff pausiert."
+                remove_entities
                 teardown
                 until [[ "$(heartbeat)" == "200" ]]; do sleep 600; done
                 bashio::log.info "Dienst wieder freigeschaltet."
