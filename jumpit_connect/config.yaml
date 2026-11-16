@@ -1,5 +1,5 @@
 name: JumpIT Connect
-version: "0.1.9"
+version: "0.1.10"
 slug: jumpit_connect
 description: >-
   Sicherer Fernzugriff auf Home Assistant über JumpIT – Ende-zu-Ende

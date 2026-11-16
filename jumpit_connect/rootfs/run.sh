@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.9"
+readonly VERSION="0.1.10"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -391,10 +391,25 @@ wait_if_paused() {
 
 # ---------------------------------------------------------------- heartbeat
 heartbeat() {
-    local payload http
-    payload="$(jq -nc --argjson h "$(handshake_age)" --argjson c "$(cert_days_left)" \
+    local payload http h c
+    # Beide Werte müssen Zahlen sein, sonst bricht jq ab und mit errexit das ganze Add-on.
+    # Ungültiges wird durch einen Standardwert ersetzt und mit dem Rohwert protokolliert.
+    h="$(handshake_age 2>/dev/null || true)"
+    if [[ ! "$h" =~ ^[0-9]+$ ]]; then
+        bashio::log.warning "Heartbeat: handshake_age ungültig (Rohwert: '${h//$'\n'/ }') – verwende 999999."
+        h=999999
+    fi
+    c="$(cert_days_left 2>/dev/null || true)"
+    if [[ ! "$c" =~ ^-?[0-9]+$ ]]; then
+        bashio::log.warning "Heartbeat: cert_days_left ungültig (Rohwert: '${c//$'\n'/ }') – verwende -1."
+        c=-1
+    fi
+    payload="$(jq -nc --argjson h "$h" --argjson c "$c" \
         --arg v "$VERSION" --arg s "${LAST_SELFTEST:-0}" \
-        '{handshake_age:$h, cert_days_left:$c, addon_version:$v, selftest:$s}')"
+        '{handshake_age:$h, cert_days_left:$c, addon_version:$v, selftest:$s}')" || {
+        echo 000
+        return 0
+    }
     http="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' \
         -H "Authorization: Bearer $(st device_token)" -H 'Content-Type: application/json' \
         -d "$payload" "${API_URL}/api/v1/heartbeat" 2>/dev/null || echo 000)"

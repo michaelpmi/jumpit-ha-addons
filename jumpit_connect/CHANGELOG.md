@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.1.10
+
+- Behoben: Die App konnte direkt nach dem Start mit der Meldung „invalid JSON text passed to --argjson“
+  abbrechen. Der Heartbeat prüft seine Messwerte jetzt und nimmt bei einem ungültigen Wert einen Standardwert,
+  statt die App zu beenden. Der Rohwert steht dann im Protokoll.
+
 ## 0.1.9
 
 - Die Meldung bei beendetem Zugang nennt jetzt die Frist: Die bisherige Adresse bekommen Sie zurück, wenn Sie
