@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.1.7
+
+- Testzugang: Ist die Testzeit abgelaufen, erscheint eine klare Meldung im Protokoll und
+  als Benachrichtigung in Home Assistant. Der Zugang startet nach der Freischaltung im
+  JumpIT-Kundenbereich von selbst wieder, mit derselben Adresse und ohne neuen Code.
+
 ## 0.1.6
 
 - Zertifikat: Schlägt die automatische Erneuerung beim Start fehl, startet der

@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.6"
+readonly VERSION="0.1.7"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -345,6 +345,33 @@ remove_entities() {
     python3 /usr/local/bin/ha_entities.py delete >/dev/null 2>&1 || true
 }
 
+# Testzeit abgelaufen (Heartbeat 402): klarer Hinweis im Protokoll und in Home Assistant
+notify_trial_expired() {
+    bashio::log.warning "Testzeit abgelaufen – Fernzugriff pausiert. Freischalten im JumpIT-Kundenbereich (kis.jumpit.eu)."
+    ha_notify "JumpIT Connect: Testzeit abgelaufen" \
+        "Ihre Testzeit ist vorbei, der Fernzugriff ist pausiert. Schalten Sie ihn im JumpIT-Kundenbereich unter https://kis.jumpit.eu frei (Dienste, Upgrade). Adresse und Aktivierung bleiben gleich, Sie müssen nichts neu einrichten."
+}
+
+# Beim Start: ist der Zugang pausiert (Test abgelaufen/gesperrt), nicht mit einem Tunnelfehler scheitern,
+# sondern ruhig warten, bis er wieder freigegeben ist.
+wait_if_paused() {
+    local code
+    code="$(heartbeat)"
+    case "$code" in
+        402)
+            notify_trial_expired
+            until [[ "$(heartbeat)" == "200" ]]; do sleep 60; done
+            bashio::log.info "Freigeschaltet – starte den Fernzugriff."
+            ha_notify "JumpIT Connect freigeschaltet" "Der Fernzugriff läuft wieder: https://$(st fqdn)"
+            ;;
+        403)
+            bashio::log.warning "Dienst gesperrt – Fernzugriff pausiert."
+            until [[ "$(heartbeat)" == "200" ]]; do sleep 600; done
+            bashio::log.info "Dienst wieder freigeschaltet."
+            ;;
+    esac
+}
+
 # ---------------------------------------------------------------- heartbeat
 heartbeat() {
     local payload http
@@ -379,6 +406,8 @@ if [[ "$NEED_ACTIVATION" == true ]]; then
 fi
 
 validate_state || bashio::exit.nok "Gespeicherte Konfiguration ist ungültig – bitte neuen Aktivierungscode anfordern."
+
+wait_if_paused
 
 tunnel_up
 wait_handshake || bashio::exit.nok "Kein WireGuard-Handshake mit der JumpIT-Edge (UDP $(st endpoint) blockiert?)."
@@ -443,6 +472,19 @@ while true; do
                 teardown
                 rm -f "$STATE" "$PSK"
                 bashio::exit.nok "Gekündigt."
+                ;;
+            402)
+                notify_trial_expired
+                teardown
+                until [[ "$(heartbeat)" == "200" ]]; do
+                    publish_entities
+                    sleep 60
+                done
+                bashio::log.info "Freigeschaltet – starte den Fernzugriff."
+                ha_notify "JumpIT Connect freigeschaltet" "Der Fernzugriff läuft wieder: https://$(st fqdn)"
+                tunnel_up
+                wait_handshake || true
+                nginx_start
                 ;;
             403)
                 bashio::log.warning "Dienst gesperrt – Fernzugriff pausiert."
