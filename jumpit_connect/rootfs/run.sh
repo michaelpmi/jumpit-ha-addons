@@ -18,7 +18,7 @@ readonly NGINX_PID=/tmp/jumpit-nginx.pid
 
 API_URL="$(bashio::config 'api_url')"
 API_URL="${API_URL%/}"
-PROXY_DONE="${DATA}/ha_proxy_attempted"
+PROXY_ATTEMPTS="${DATA}/ha_proxy_attempts"
 
 # Upstream: Standard ist die Adresse, die der Supervisor für Home Assistant meldet
 # (Port/SSL werden automatisch erkannt). Die Option ha_upstream überschreibt das.
@@ -280,8 +280,10 @@ if [[ "$_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$_host" != "127.0.0.1" ]]
 # setzt Home Assistant sie nach ca. 5 Minuten selbst zurück.
 ha_proxy_setup() {
     local res rc=0 i code=""
-    if [[ -f "$PROXY_DONE" ]]; then
-        ha_manual_hint "automatische Freigabe wurde bereits einmal versucht"
+    # Begrenzt statt Dauer-Merker: höchstens 3 Versuche pro Tag, 10 min Abstand.
+    # So heilt sich die Freigabe bei Updates/Rollbacks selbst, ohne Neustart-Schleifen.
+    if ! python3 /usr/local/bin/attempt_limit.py check "$PROXY_ATTEMPTS" 3 86400 600 >/dev/null; then
+        ha_manual_hint "zu viele automatische Versuche (höchstens 3 pro Tag)"
         return 1
     fi
     if ! bashio::config.true 'auto_configure_ha'; then
@@ -297,7 +299,7 @@ ha_proxy_setup() {
         3:*) ha_manual_hint "die Freigabe steht schon in der Konfiguration, Home Assistant lehnt sie trotzdem ab"; return 1 ;;
         *) ha_manual_hint "Home Assistant hat die Änderung nicht angenommen (${res:-keine Antwort})"; return 1 ;;
     esac
-    touch "$PROXY_DONE"
+    python3 /usr/local/bin/attempt_limit.py record "$PROXY_ATTEMPTS" 86400 >/dev/null || true
 
     sleep 20
     for i in $(seq 1 60); do
@@ -356,6 +358,7 @@ heartbeat() {
 
 # ================================================================= main
 bashio::log.info "JumpIT Connect ${VERSION} startet."
+rm -f "${DATA}/ha_proxy_attempted"
 ensure_key
 
 CODE="$(bashio::config 'activation_code')"
@@ -444,5 +447,10 @@ while true; do
             nginx -c "$NGINX_CONF" -s reload && bashio::log.info "Zertifikat erneuert."
         fi
         LAST_SELFTEST="$(selftest | tail -n1)"
+        if [[ "$LAST_SELFTEST" == "400" ]]; then
+            rc=0
+            ha_proxy_setup || rc=$?
+            ((rc == 0)) && LAST_SELFTEST="200"
+        fi
     fi
 done
