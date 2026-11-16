@@ -60,6 +60,8 @@ def run_cmd(core: FakeCore, *argv, token="tok"):
         try:
             if argv[0] == "configure":
                 return await hc.cmd_configure(list(argv[1:]))
+            if argv[0] == "status":
+                return await hc.cmd_status(list(argv[1:]))
             return await hc.cmd_promote()
         finally:
             server.close()
@@ -139,6 +141,26 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(run_cmd(core, "promote"), 0)
         self.assertIsNone(core.pending)
         self.assertEqual(core.stable["trusted_proxies"], P)
+
+    def test_status_stable(self):
+        core = FakeCore(stable={"use_x_forwarded_for": True, "trusted_proxies": ["127.0.0.1/32", "::1/128"]})
+        self.assertEqual(run_cmd(core, "status", *P), 0)
+
+    def test_status_pending(self):
+        core = FakeCore(stable={}, pending={"use_x_forwarded_for": True, "trusted_proxies": P})
+        self.assertEqual(run_cmd(core, "status", *P), 0)
+
+    def test_status_none(self):
+        core = FakeCore(stable={"use_x_forwarded_for": False})
+        self.assertEqual(run_cmd(core, "status", *P), 3)
+
+    def test_status_aendert_nichts(self):
+        core = FakeCore(stable={"use_x_forwarded_for": False})
+        run_cmd(core, "status", *P)
+        self.assertEqual([m["type"] for m in core.received], ["http/config"])
+
+    def test_status_unsupported(self):
+        self.assertEqual(run_cmd(FakeCore(supported=False), "status", *P), 4)
 
     def test_falsches_token_wird_abgelehnt(self):
         core = FakeCore(token="richtig")

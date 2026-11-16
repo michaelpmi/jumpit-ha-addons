@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.3"
+readonly VERSION="0.1.4"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -309,7 +309,18 @@ ha_proxy_setup() {
         return 1
     fi
 
-    res="$(python3 /usr/local/bin/ha_http_config.py promote)" || rc=$?
+    # Bestätigen mit Wiederholungen: direkt nach dem Neustart nimmt die Core-Schnittstelle
+    # oft noch keine Verbindung an. Ist die Freigabe zwischendurch schon dauerhaft, reicht das.
+    res=""
+    for i in $(seq 1 24); do
+        rc=0
+        res="$(python3 /usr/local/bin/ha_http_config.py promote)" || rc=$?
+        [[ "$res" == "promoted" ]] && break
+        rc=0
+        st_res="$(python3 /usr/local/bin/ha_http_config.py status "${PROXIES[@]}")" || rc=$?
+        if [[ "$st_res" == "stable" ]]; then res="promoted"; break; fi
+        sleep 10
+    done
     if [[ "$res" != "promoted" ]]; then
         ha_manual_hint "Bestätigung bei Home Assistant fehlgeschlagen (${res:-keine Antwort})"
         return 1

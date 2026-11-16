@@ -9,6 +9,7 @@ sondern im Store .storage/http und wird über diese Kommandos verwaltet:
 
 Aufruf:
     ha_http_config.py configure <proxy> [<proxy> ...]
+    ha_http_config.py status <proxy> [<proxy> ...]
     ha_http_config.py promote
 
 Ausgabe (eine Zeile) und Exit-Code:
@@ -17,6 +18,10 @@ Ausgabe (eine Zeile) und Exit-Code:
                unchanged (3) Freigabe steht schon als stable
                unsupported (4)  HA kennt http/config nicht (älter als 2026.8)
                error:<text> (1)
+    status:    stable (0)    Freigabe ist dauerhaft gespeichert
+               pending (0)   Freigabe gesetzt, aber noch nicht bestätigt
+               none (3)      Freigabe fehlt
+               unsupported (4) | error:<text> (1)
     promote:   promoted (0) | error:<text> (1)
 
 Gesprochen wird mit ws://supervisor/core/websocket und dem SUPERVISOR_TOKEN
@@ -149,6 +154,32 @@ async def cmd_configure(proxies: list[str]) -> int:
             pass
 
 
+async def cmd_status(proxies: list[str]) -> int:
+    client, ws = await connect()
+    try:
+        try:
+            state = await client.call({"type": "http/config"})
+        except WsError as e:
+            if e.code in ("unknown_command", "not_found"):
+                print("unsupported")
+                return 4
+            raise
+        state = state or {}
+        if state.get("pending") and has_proxies(state.get("pending"), proxies):
+            print("pending")
+            return 0
+        if not state.get("pending") and has_proxies(state.get("stable"), proxies):
+            print("stable")
+            return 0
+        print("none")
+        return 3
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 async def cmd_promote() -> int:
     client, ws = await connect()
     try:
@@ -163,21 +194,23 @@ async def cmd_promote() -> int:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2 or argv[1] not in ("configure", "promote"):
-        print("usage: ha_http_config.py configure <proxy>... | promote", file=sys.stderr)
+    if len(argv) < 2 or argv[1] not in ("configure", "status", "promote"):
+        print("usage: ha_http_config.py configure|status <proxy>... | promote", file=sys.stderr)
         return 1
     try:
-        if argv[1] == "configure":
+        if argv[1] in ("configure", "status"):
             if len(argv) < 3:
                 print("error:keine Proxy-Adresse")
                 return 1
-            return asyncio.run(cmd_configure(argv[2:]))
+            fn = cmd_configure if argv[1] == "configure" else cmd_status
+            return asyncio.run(fn(argv[2:]))
         return asyncio.run(cmd_promote())
     except WsError as e:
         print(f"error:{e.code}")
         return 1
-    except Exception as e:  # keine Details (könnten Pfade/Token enthalten)
-        print(f"error:{type(e).__name__}")
+    except Exception as e:  # keine Details (könnten Pfade/Token enthalten), nur Typ und HTTP-Status
+        code = getattr(getattr(e, "response", None), "status_code", None)
+        print(f"error:{type(e).__name__}" + (f":{code}" if code else ""))
         return 1
 
 
