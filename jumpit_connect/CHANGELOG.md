@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.1.8
+
+- Ist Ihr Zugang beendet (Laufzeit abgelaufen, gekündigt oder durch einen neuen Code ersetzt), sagt die App
+  das jetzt klar: im Protokoll und als Benachrichtigung in Home Assistant, mit der Anleitung, wie Sie Ihre
+  Adresse nach einer Verlängerung zurückbekommen. Das gilt auch, wenn die App nach dem Ende neu startet.
+  Vorher erschien dort die irreführende Meldung „Kein Handshake, UDP blockiert?“.
+
 ## 0.1.7
 
 - Testzugang: Ist die Testzeit abgelaufen, erscheint eine klare Meldung im Protokoll und

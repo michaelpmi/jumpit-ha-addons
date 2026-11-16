@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.7"
+readonly VERSION="0.1.8"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -352,12 +352,29 @@ notify_trial_expired() {
         "Ihre Testzeit ist vorbei, der Fernzugriff ist pausiert. Schalten Sie ihn im JumpIT-Kundenbereich unter https://kis.jumpit.eu frei (Dienste, Upgrade). Adresse und Aktivierung bleiben gleich, Sie müssen nichts neu einrichten."
 }
 
+# Zugang beendet (Heartbeat 410): kann Laufzeitende, Kündigung oder ein durch einen neuen Code ersetzter Zugang sein.
+# Die API unterscheidet das nicht mehr (der Gerätetoken ist dann gelöscht), deshalb neutral formulieren und sagen, was zu tun ist.
+notify_access_ended() {
+    local slug
+    slug="$(st fqdn)"
+    slug="${slug%%.*}"
+    bashio::log.error "Der Zugang wurde beendet (Laufzeit abgelaufen, gekündigt oder durch einen neuen Code ersetzt). Fernzugriff gestoppt."
+    ha_notify "JumpIT Connect: Zugang beendet" \
+        "Der Fernzugriff ist beendet. Ist die Laufzeit abgelaufen, bestellen Sie JumpIT Connect unter https://kis.jumpit.eu/store/home-assistant neu. Tragen Sie als Wunsch-Adresse ${slug} ein und verwenden Sie dieselbe E-Mail-Adresse, dann bekommen Sie Ihre Adresse zurück. Den neuen Aktivierungscode tragen Sie in der Konfiguration dieser App ein."
+}
+
 # Beim Start: ist der Zugang pausiert (Test abgelaufen/gesperrt), nicht mit einem Tunnelfehler scheitern,
 # sondern ruhig warten, bis er wieder freigegeben ist.
 wait_if_paused() {
     local code
     code="$(heartbeat)"
     case "$code" in
+        410)
+            notify_access_ended
+            remove_entities
+            rm -f "$STATE" "$PSK"
+            bashio::exit.nok "Zugang beendet. Bitte einen neuen Aktivierungscode in der Konfiguration eintragen."
+            ;;
         402)
             notify_trial_expired
             until [[ "$(heartbeat)" == "200" ]]; do sleep 60; done
@@ -467,11 +484,11 @@ while true; do
     if ((tick % 5 == 0)); then
         case "$(heartbeat)" in
             410)
-                bashio::log.error "Dienst wurde gekündigt – Fernzugriff beendet."
+                notify_access_ended
                 remove_entities
                 teardown
                 rm -f "$STATE" "$PSK"
-                bashio::exit.nok "Gekündigt."
+                bashio::exit.nok "Zugang beendet. Bitte einen neuen Aktivierungscode in der Konfiguration eintragen."
                 ;;
             402)
                 notify_trial_expired
