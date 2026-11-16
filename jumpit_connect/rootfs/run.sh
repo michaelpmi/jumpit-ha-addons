@@ -5,7 +5,7 @@
 # terminiert TLS lokal (Ende-zu-Ende: die Edge sieht nur verschlüsselten Verkehr).
 set -o pipefail
 
-readonly VERSION="0.1.5"
+readonly VERSION="0.1.6"
 readonly DATA=/data
 readonly KEY="${DATA}/wg.key"
 readonly PSK="${DATA}/wg.psk"
@@ -180,13 +180,14 @@ cert_file() { echo "${LEGO_PATH}/certificates/$(st fqdn).crt"; }
 key_file() { echo "${LEGO_PATH}/certificates/$(st fqdn).key"; }
 
 cert_days_left() {
-    local end
+    # Restlaufzeit in Tagen (-1 = kein Zertifikat). Das busybox-date im Image kann
+    # das openssl-Datumsformat nicht lesen, deshalb rechnet Python.
     [[ -s "$(cert_file)" ]] || {
         echo -1
         return
     }
-    end="$(openssl x509 -enddate -noout -in "$(cert_file)" | cut -d= -f2)"
-    echo $((($(date -d "$end" +%s 2>/dev/null || echo 0) - $(date +%s)) / 86400))
+    python3 -c 'import ssl, sys, time; print(int((ssl.cert_time_to_seconds(sys.argv[1]) - time.time()) // 86400))' \
+        "$(openssl x509 -enddate -noout -in "$(cert_file)" | cut -d= -f2)" 2>/dev/null || echo -1
 }
 
 obtain_or_renew_cert() {
@@ -198,7 +199,7 @@ obtain_or_renew_cert() {
         (($(cert_days_left) > 30)) && return 0
         bashio::log.info "Erneuere Zertifikat …"
         lego "${args[@]}" --accept-tos --dns httpreq --domains "$(st fqdn)" \
-            --path "$LEGO_PATH" renew --days 30 || return 1
+            --path "$LEGO_PATH" renew --days 30 --no-random-sleep || return 1
         return 2 # erneuert -> nginx reload
     fi
     bashio::log.info "Hole Zertifikat für $(st fqdn) (DNS-01) …"
@@ -387,6 +388,12 @@ while true; do
     rc=0
     obtain_or_renew_cert || rc=$?
     ((rc == 0 || rc == 2)) && break
+    # Erneuerung gescheitert, aber das vorhandene Zertifikat ist noch gültig: trotzdem
+    # starten, damit der Fernzugriff nicht ausfällt. Die Erneuerung läuft stündlich weiter.
+    if [[ -s "$(cert_file)" ]] && (($(cert_days_left) > 0)); then
+        bashio::log.warning "Erneuerung fehlgeschlagen – starte mit dem vorhandenen Zertifikat (noch $(cert_days_left) Tage), neuer Versuch stündlich."
+        break
+    fi
     bashio::log.warning "Zertifikat konnte nicht geholt werden – neuer Versuch in 10 min."
     sleep 600
 done
@@ -415,6 +422,17 @@ while true; do
     fi
 
     publish_entities
+
+    # Zertifikat: ab 30 Tagen Restlaufzeit stündlich erneuern (sonst gilt der 12-h-Takt unten)
+    if ((tick % 60 == 0)) && (($(cert_days_left) <= 30)); then
+        rc=0
+        obtain_or_renew_cert || rc=$?
+        if ((rc == 2)); then
+            nginx -c "$NGINX_CONF" -s reload && bashio::log.info "Zertifikat erneuert."
+        elif ((rc != 0)); then
+            bashio::log.warning "Zertifikat-Erneuerung fehlgeschlagen (noch $(cert_days_left) Tage gültig) – neuer Versuch in 1 h."
+        fi
+    fi
 
     # Heartbeat alle 5 min
     if ((tick % 5 == 0)); then

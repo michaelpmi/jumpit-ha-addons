@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.1.6
+
+- Zertifikat: Schlägt die automatische Erneuerung beim Start fehl, startet der
+  Fernzugriff trotzdem mit dem noch gültigen Zertifikat. In den letzten 30 Tagen
+  wird die Erneuerung stündlich versucht (vorher alle 12 Stunden).
+- Behoben: Die Restlaufzeit des Zertifikats wurde falsch berechnet. Das Add-on hat
+  dadurch bei jedem Start unnötig eine Erneuerung angestoßen und zeigte falsche Tage an.
+- Die Erneuerung wartet nicht mehr bis zu vier Minuten.
+
 ## 0.1.5
 
 - Neu: Ihre Adresse und der Verbindungsstatus erscheinen in Home Assistant als
